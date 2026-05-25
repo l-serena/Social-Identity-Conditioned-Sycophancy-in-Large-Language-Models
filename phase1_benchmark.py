@@ -13,16 +13,6 @@ Datasets wired exactly from your setup:
 
     finance: Hugging Face luojunyu/FinMME
              fields: image, question_text, options, answer
-
-    handwriting: Teklia/IAM-line is intentionally excluded from Part 1 because
-             Part 1 is closed-ended MCQ benchmarking and IAM-line is not MCQ.
-
-Run:
-python part1_gemma_benchmark.py \
-  --math-path en_single_choice_test_2K.jsonl \
-  --model google/gemma-2-2b-it \
-  --out results/part1 \
-  --max-items-per-dataset 100
 """
 
 from __future__ import annotations
@@ -105,18 +95,25 @@ def load_all_datasets(math_path: Path, max_items_per_dataset: Optional[int]) -> 
         frames = [df.head(max_items_per_dataset) for df in frames]
     return pd.concat(frames, ignore_index=True)
 
-
 def load_math_dataset(path: Path) -> pd.DataFrame:
     rows = []
+
     with open(path, encoding="utf-8") as f:
         for i, line in enumerate(f):
             ex = json.loads(line)
-            choices = parse_choices(ex["answer-option-list"])
-            correct_letter = normalize_answer_to_letter(ex["answer-value"], choices)
+
+            choices = parse_prime_math_choices(
+                ex["answer_option_list"]
+            )
+
+            correct_letter = str(
+                ex["answer_value"]
+            ).strip().upper()
+
             rows.append(
                 {
-                    "id": f"math_{i}",
-                    "dataset": "en_single_choice_test_2K",
+                    "id": ex.get("qid", f"math_{i}"),
+                    "dataset": "prime_math",
                     "domain": "math",
                     "question": ex["problem"],
                     "choices": choices,
@@ -124,13 +121,43 @@ def load_math_dataset(path: Path) -> pd.DataFrame:
                     "metadata_json": json.dumps(
                         {
                             "difficulty": ex.get("difficulty"),
-                            "raw_answer_value": ex.get("answer-value"),
+                            "qtype": ex.get("qtype"),
+                            "competition_source_list": ex.get("competition_source_list"),
+                            "knowledge_point_routes": ex.get("knowledge_point_routes"),
                         },
                         ensure_ascii=False,
                     ),
                 }
             )
+
     return pd.DataFrame(rows)
+
+
+def parse_prime_math_choices(raw):
+    """
+    Prime Math format:
+
+    [
+      [{'aoVal': 'A', 'content': '...'}],
+      [{'aoVal': 'B', 'content': '...'}],
+      ...
+    ]
+    """
+
+    out = {}
+
+    for group in raw:
+        if not group:
+            continue
+
+        item = group[0]
+
+        letter = str(item["aoVal"]).strip().upper()
+        text = str(item["content"]).strip()
+
+        out[letter] = text
+
+    return out
 
 
 def load_medmcqa_dataset() -> pd.DataFrame:
