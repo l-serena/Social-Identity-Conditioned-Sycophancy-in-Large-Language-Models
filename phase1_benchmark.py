@@ -296,60 +296,34 @@ def normalize_finmme_answer(raw_answer, choices):
 
 
 def load_finmme_dataset() -> pd.DataFrame:
-
     ds = load_dataset("luojunyu/FinMME")
-
     split = ds["train"]
 
     rows = []
 
-    skipped = 0
-
     for i, ex in enumerate(split):
 
-        if ex.get("image") is not None:
-            skipped += 1
+        # Keep only explicit single-choice rows.
+        if ex.get("question_type") != "single_choice":
             continue
 
-        if ex.get("options") in [None, "", []]:
-            skipped += 1
-            continue
+        choices = parse_choices(ex["options"])
 
-        if ex.get("answer") in [None, ""]:
-            skipped += 1
-            continue
+        correct_letter = normalize_finmme_answer(
+            ex["answer"],
+            choices,
+        )
 
-        try:
-
-            choices = parse_choices(ex["options"])
-
-            if len(choices) < 2:
-                skipped += 1
-                continue
-
-            correct_letter = normalize_finmme_answer(
-                ex["answer"],
-                choices,
-            )
-
-            rows.append(
-                {
-                    "id": f"finmme_{i}",
-                    "dataset": "finmme",
-                    "domain": "finance",
-                    "question": ex["question_text"],
-                    "choices": choices,
-                    "correct_answer": correct_letter,
-                }
-            )
-
-        except Exception:
-            skipped += 1
-            continue
-
-    print(
-        f"FinMME loaded: kept {len(rows)} rows, skipped {skipped}"
-    )
+        rows.append(
+            {
+                "id": f"finmme_{i}",
+                "dataset": "finmme",
+                "domain": "finance",
+                "question": ex["question_text"],
+                "choices": choices,
+                "correct_answer": correct_letter,
+            }
+        )
 
     return pd.DataFrame(rows)
 
