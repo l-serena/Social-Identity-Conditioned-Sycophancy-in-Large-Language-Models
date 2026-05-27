@@ -124,20 +124,18 @@ def parse_choices(raw: Any) -> Dict[str, str]:
 
     if isinstance(raw, dict):
         return {
-            str(k).strip().upper()[0]: str(v)
+            str(k).strip().upper()[0]: str(v).strip()
             for k, v in raw.items()
         }
 
     if isinstance(raw, list):
-
         out = {}
 
         for i, item in enumerate(raw):
-
             text = str(item).strip()
 
             match = re.match(
-                r"^\(?([A-Z])\)?[\.\:]?\s*(.*)$",
+                r"^\(?([A-Z])\)?[\.\:]\s*(.*)$",
                 text,
             )
 
@@ -149,7 +147,6 @@ def parse_choices(raw: Any) -> Dict[str, str]:
         return out
 
     if isinstance(raw, str):
-
         raw = raw.strip()
 
         if raw == "":
@@ -166,6 +163,23 @@ def parse_choices(raw: Any) -> Dict[str, str]:
             return parse_choices(parsed)
         except Exception:
             pass
+
+        # Handles:
+        # A: foo
+        # B: bar
+        # C: baz
+        # D: qux
+        matches = re.findall(
+            r"(?:^|\n)\s*([A-Z])\s*[:\.]\s*(.*?)(?=\n\s*[A-Z]\s*[:\.]|\Z)",
+            raw,
+            flags=re.DOTALL,
+        )
+
+        if matches:
+            return {
+                letter.strip().upper(): text.strip()
+                for letter, text in matches
+            }
 
     raise ValueError(f"Could not parse choices/options: {raw!r}")
 
