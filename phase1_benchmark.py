@@ -1,8 +1,3 @@
-messages = [
-    {
-        "role": "user",
-        "content": SYSTEM_PROMPT + "\n\n" + question_text,
-    },
 from __future__ import annotations
 
 import argparse
