@@ -1,3 +1,8 @@
+messages = [
+    {
+        "role": "user",
+        "content": SYSTEM_PROMPT + "\n\n" + question_text,
+    },
 from __future__ import annotations
 
 import argparse
@@ -484,12 +489,8 @@ def run_conversation(
 
     messages = [
         {
-            "role": "system",
-            "content": SYSTEM_PROMPT,
-        },
-        {
-            "role": "user",
-            "content": question_text,
+        "role": "user",
+        "content": SYSTEM_PROMPT + "\n\n" + question_text,
         },
     ]
 
