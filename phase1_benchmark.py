@@ -124,20 +124,18 @@ def parse_choices(raw: Any) -> Dict[str, str]:
 
     if isinstance(raw, dict):
         return {
-            str(k).strip().upper()[0]: str(v)
+            str(k).strip().upper()[0]: str(v).strip()
             for k, v in raw.items()
         }
 
     if isinstance(raw, list):
-
         out = {}
 
         for i, item in enumerate(raw):
-
             text = str(item).strip()
 
             match = re.match(
-                r"^\(?([A-Z])\)?[\.\:]?\s*(.*)$",
+                r"^\(?([A-Z])\)?[\.\:]\s*(.*)$",
                 text,
             )
 
@@ -149,7 +147,6 @@ def parse_choices(raw: Any) -> Dict[str, str]:
         return out
 
     if isinstance(raw, str):
-
         raw = raw.strip()
 
         if raw == "":
@@ -166,6 +163,23 @@ def parse_choices(raw: Any) -> Dict[str, str]:
             return parse_choices(parsed)
         except Exception:
             pass
+
+        # Handles:
+        # A: foo
+        # B: bar
+        # C: baz
+        # D: qux
+        matches = re.findall(
+            r"(?:^|\n)\s*([A-Z])\s*[:\.]\s*(.*?)(?=\n\s*[A-Z]\s*[:\.]|\Z)",
+            raw,
+            flags=re.DOTALL,
+        )
+
+        if matches:
+            return {
+                letter.strip().upper(): text.strip()
+                for letter, text in matches
+            }
 
     raise ValueError(f"Could not parse choices/options: {raw!r}")
 
@@ -296,60 +310,34 @@ def normalize_finmme_answer(raw_answer, choices):
 
 
 def load_finmme_dataset() -> pd.DataFrame:
-
     ds = load_dataset("luojunyu/FinMME")
-
     split = ds["train"]
 
     rows = []
 
-    skipped = 0
-
     for i, ex in enumerate(split):
 
-        if ex.get("image") is not None:
-            skipped += 1
+        # Keep only explicit single-choice rows.
+        if ex.get("question_type") != "single_choice":
             continue
 
-        if ex.get("options") in [None, "", []]:
-            skipped += 1
-            continue
+        choices = parse_choices(ex["options"])
 
-        if ex.get("answer") in [None, ""]:
-            skipped += 1
-            continue
+        correct_letter = normalize_finmme_answer(
+            ex["answer"],
+            choices,
+        )
 
-        try:
-
-            choices = parse_choices(ex["options"])
-
-            if len(choices) < 2:
-                skipped += 1
-                continue
-
-            correct_letter = normalize_finmme_answer(
-                ex["answer"],
-                choices,
-            )
-
-            rows.append(
-                {
-                    "id": f"finmme_{i}",
-                    "dataset": "finmme",
-                    "domain": "finance",
-                    "question": ex["question_text"],
-                    "choices": choices,
-                    "correct_answer": correct_letter,
-                }
-            )
-
-        except Exception:
-            skipped += 1
-            continue
-
-    print(
-        f"FinMME loaded: kept {len(rows)} rows, skipped {skipped}"
-    )
+        rows.append(
+            {
+                "id": f"finmme_{i}",
+                "dataset": "finmme",
+                "domain": "finance",
+                "question": ex["question_text"],
+                "choices": choices,
+                "correct_answer": correct_letter,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -496,12 +484,8 @@ def run_conversation(
 
     messages = [
         {
-            "role": "system",
-            "content": SYSTEM_PROMPT,
-        },
-        {
-            "role": "user",
-            "content": question_text,
+        "role": "user",
+        "content": SYSTEM_PROMPT + "\n\n" + question_text,
         },
     ]
 
