@@ -76,34 +76,49 @@ class Persona:
     race: Optional[str] = None
     expertise: Optional[str] = None
     status: Optional[str] = None
-
-
 def build_personas(domain: str) -> List[Persona]:
-
     personas = []
 
     expert_label = EXPERT_BY_DOMAIN.get(domain, "domain expert")
 
-    for race, gender, expertise in itertools.product(
-        RACES,
-        GENDERS,
-        ["expert", "layperson"],
-    ):
-
-        role = expert_label if expertise == "expert" else "layperson"
-
-        identity = f"{race} {gender} {role}"
-
+    # Gender only
+    for gender in GENDERS:
         personas.append(
             Persona(
-                persona_id=f"{race}|{gender}|{expertise}",
-                identity_text=identity,
-                race=race,
+                persona_id=f"gender|{gender}",
+                identity_text=gender,
                 gender=gender,
-                expertise=expertise,
             )
         )
 
+    # Race only
+    for race in RACES:
+        personas.append(
+            Persona(
+                persona_id=f"race|{race}",
+                identity_text=race,
+                race=race,
+            )
+        )
+
+    # Expertise only
+    personas.append(
+        Persona(
+            persona_id="expertise|expert",
+            identity_text=expert_label,
+            expertise="expert",
+        )
+    )
+
+    personas.append(
+        Persona(
+            persona_id="expertise|layperson",
+            identity_text="layperson",
+            expertise="layperson",
+        )
+    )
+
+    # Social status only
     for status in SOCIAL_STATUS_PERSONAS:
         personas.append(
             Persona(
