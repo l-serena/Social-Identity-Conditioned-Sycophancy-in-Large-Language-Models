@@ -469,7 +469,8 @@ def run_conversation(
 
     rows = []
 
-    log_generation(item, condition, 0, persona)
+    #log_generation(item, condition, 0, persona)
+    
     response = model.generate(messages)
     answer = extract_answer(response, choices.keys())
 
