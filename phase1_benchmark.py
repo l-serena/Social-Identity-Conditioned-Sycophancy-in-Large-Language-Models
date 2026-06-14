@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import torch
@@ -76,12 +76,13 @@ class Persona:
     race: Optional[str] = None
     expertise: Optional[str] = None
     status: Optional[str] = None
+
+
 def build_personas(domain: str) -> List[Persona]:
     personas = []
 
     expert_label = EXPERT_BY_DOMAIN.get(domain, "domain expert")
 
-    # Gender only
     for gender in GENDERS:
         personas.append(
             Persona(
@@ -91,7 +92,6 @@ def build_personas(domain: str) -> List[Persona]:
             )
         )
 
-    # Race only
     for race in RACES:
         personas.append(
             Persona(
@@ -101,7 +101,6 @@ def build_personas(domain: str) -> List[Persona]:
             )
         )
 
-    # Expertise only
     personas.append(
         Persona(
             persona_id="expertise|expert",
@@ -118,7 +117,6 @@ def build_personas(domain: str) -> List[Persona]:
         )
     )
 
-    # Social status only
     for status in SOCIAL_STATUS_PERSONAS:
         personas.append(
             Persona(
@@ -136,7 +134,6 @@ def build_personas(domain: str) -> List[Persona]:
 # =========================================================
 
 def parse_choices(raw: Any) -> Dict[str, str]:
-
     if isinstance(raw, dict):
         return {
             str(k).strip().upper()[0]: str(v).strip()
@@ -179,11 +176,6 @@ def parse_choices(raw: Any) -> Dict[str, str]:
         except Exception:
             pass
 
-        # Handles:
-        # A: foo
-        # B: bar
-        # C: baz
-        # D: qux
         matches = re.findall(
             r"(?:^|\n)\s*([A-Z])\s*[:\.]\s*(.*?)(?=\n\s*[A-Z]\s*[:\.]|\Z)",
             raw,
@@ -204,11 +196,9 @@ def parse_choices(raw: Any) -> Dict[str, str]:
 # =========================================================
 
 def parse_prime_math_choices(raw):
-
     out = {}
 
     for group in raw:
-
         if not group:
             continue
 
@@ -223,13 +213,10 @@ def parse_prime_math_choices(raw):
 
 
 def load_math_dataset(path: Path) -> pd.DataFrame:
-
     rows = []
 
     with open(path, encoding="utf-8") as f:
-
         for i, line in enumerate(f):
-
             ex = json.loads(line)
 
             choices = parse_prime_math_choices(
@@ -259,22 +246,17 @@ def load_math_dataset(path: Path) -> pd.DataFrame:
 # =========================================================
 
 def medmcqa_cop_to_letter(cop):
-
     idx = int(cop)
-
     return chr(ord("A") + idx)
 
 
 def load_medmcqa_dataset() -> pd.DataFrame:
-
     ds = load_dataset("openlifescienceai/medmcqa")
-
     split = ds["train"]
 
     rows = []
 
     for i, ex in enumerate(split):
-
         choices = {
             "A": ex["opa"],
             "B": ex["opb"],
@@ -303,14 +285,12 @@ def load_medmcqa_dataset() -> pd.DataFrame:
 # =========================================================
 
 def normalize_finmme_answer(raw_answer, choices):
-
     ans = str(raw_answer).strip().upper()
 
     if ans in choices:
         return ans
 
     for letter, text in choices.items():
-
         if str(text).strip() == str(raw_answer).strip():
             return letter
 
@@ -331,8 +311,6 @@ def load_finmme_dataset() -> pd.DataFrame:
     rows = []
 
     for i, ex in enumerate(split):
-
-        # Keep only explicit single-choice rows.
         if ex.get("question_type") != "single_choice":
             continue
 
@@ -365,7 +343,6 @@ def load_all_datasets(
     math_path: Path,
     max_items_per_dataset: Optional[int],
 ):
-
     frames = [
         load_math_dataset(math_path),
         load_medmcqa_dataset(),
@@ -386,29 +363,33 @@ def load_all_datasets(
 # =========================================================
 
 class GemmaHF:
-
     def __init__(
         self,
         model_name: str,
         max_new_tokens: int,
         temperature: float,
+        device: str = "cuda",
     ):
-
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name
         )
 
+        if device == "cuda" and not torch.cuda.is_available():
+            print("CUDA requested but unavailable; falling back to CPU.")
+            device = "cpu"
+
+        self.device = torch.device(device)
+
         dtype = (
             torch.bfloat16
-            if torch.cuda.is_available()
+            if self.device.type == "cuda"
             else torch.float32
         )
 
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            device_map="auto",
             torch_dtype=dtype,
-        )
+        ).to(self.device)
 
         self.model.eval()
 
@@ -416,7 +397,6 @@ class GemmaHF:
         self.temperature = temperature
 
     def generate(self, messages):
-
         prompt = self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
@@ -426,7 +406,7 @@ class GemmaHF:
         inputs = self.tokenizer(
             prompt,
             return_tensors="pt",
-        ).to(self.model.device)
+        ).to(self.device)
 
         do_sample = self.temperature > 0
 
@@ -439,7 +419,7 @@ class GemmaHF:
         if do_sample:
             kwargs["temperature"] = self.temperature
 
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = self.model.generate(
                 **inputs,
                 **kwargs,
@@ -460,7 +440,6 @@ class GemmaHF:
 # =========================================================
 
 def format_question(question, choices):
-
     options = "\n".join(
         f"({k}) {v}"
         for k, v in sorted(choices.items())
@@ -470,11 +449,9 @@ def format_question(question, choices):
 
 
 def extract_answer(text, valid_letters):
-
     match = ANSWER_RE.search(text)
 
     if match:
-
         ans = match.group(1).upper()
 
         if ans in valid_letters:
@@ -489,7 +466,6 @@ def run_conversation(
     condition,
     persona=None,
 ):
-
     choices = item["choices"]
 
     question_text = format_question(
@@ -499,14 +475,13 @@ def run_conversation(
 
     messages = [
         {
-        "role": "user",
-        "content": SYSTEM_PROMPT + "\n\n" + question_text,
+            "role": "user",
+            "content": SYSTEM_PROMPT + "\n\n" + question_text,
         },
     ]
 
     rows = []
 
-    # Turn 0
     response = model.generate(messages)
 
     answer = extract_answer(
@@ -557,7 +532,6 @@ def run_conversation(
         )
 
     for turn in range(1, N_PUSHBACK_TURNS + 1):
-
         messages.append(
             {
                 "role": "user",
@@ -612,7 +586,6 @@ def run_conversation(
 # =========================================================
 
 def compute_metrics(results, out_dir):
-
     out_dir.mkdir(
         parents=True,
         exist_ok=True,
@@ -640,7 +613,6 @@ def compute_metrics(results, out_dir):
         merged["answer"] == merged["turn0_answer"]
     )
 
-    # Retention curves
     retention = (
         merged[merged["turn"].isin([1, 2, 3])]
         .groupby(
@@ -657,7 +629,6 @@ def compute_metrics(results, out_dir):
         index=False,
     )
 
-    # Accuracy
     accuracy = (
         merged.groupby(
             ["dataset", "domain", "condition", "turn"]
@@ -673,7 +644,6 @@ def compute_metrics(results, out_dir):
         index=False,
     )
 
-    # Flipping
     base_correct = (
         merged[merged["turn"] == 0][
             [
@@ -697,7 +667,6 @@ def compute_metrics(results, out_dir):
     )
 
     def flip_type(row):
-
         if row["turn"] == 0:
             return None
 
@@ -756,7 +725,6 @@ def compute_metrics(results, out_dir):
 # =========================================================
 
 def main():
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -792,19 +760,55 @@ def main():
         default=0.0,
     )
 
+    parser.add_argument(
+        "--device",
+        default="cuda",
+        choices=["cuda", "cpu"],
+    )
+
+    parser.add_argument(
+        "--num-shards",
+        type=int,
+        default=1,
+    )
+
+    parser.add_argument(
+        "--shard-id",
+        type=int,
+        default=0,
+    )
+
     args = parser.parse_args()
+
+    if args.num_shards < 1:
+        raise ValueError("--num-shards must be at least 1")
+
+    if args.shard_id < 0 or args.shard_id >= args.num_shards:
+        raise ValueError(
+            f"--shard-id must be between 0 and {args.num_shards - 1}"
+        )
 
     data = load_all_datasets(
         Path(args.math_path),
         args.max_items_per_dataset,
     )
 
-    print(f"Loaded {len(data)} total items.")
+    print(f"Loaded {len(data)} total items before sharding.")
+
+    data = data.iloc[
+        args.shard_id :: args.num_shards
+    ].reset_index(drop=True)
+
+    print(
+        f"Running shard {args.shard_id}/{args.num_shards} "
+        f"with {len(data)} items."
+    )
 
     gemma = GemmaHF(
         model_name=args.model,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
+        device=args.device,
     )
 
     all_rows = []
@@ -813,7 +817,6 @@ def main():
         data.iterrows(),
         total=len(data),
     ):
-
         all_rows.extend(
             run_conversation(
                 gemma,
@@ -833,7 +836,6 @@ def main():
         for persona in build_personas(
             item["domain"]
         ):
-
             all_rows.extend(
                 run_conversation(
                     gemma,
@@ -845,12 +847,14 @@ def main():
 
     results = pd.DataFrame(all_rows)
 
+    shard_out = Path(args.out) / f"shard_{args.shard_id:03d}"
+
     compute_metrics(
         results,
-        Path(args.out),
+        shard_out,
     )
 
-    print("Done.")
+    print(f"Done. Wrote results to {shard_out}")
 
 
 if __name__ == "__main__":
