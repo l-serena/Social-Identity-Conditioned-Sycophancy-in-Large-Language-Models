@@ -511,7 +511,7 @@ def run_conversation(
             }
         )
 
-        log_generation(item, condition, turn, persona)
+        #log_generation(item, condition, turn, persona)
         response = model.generate(messages)
         answer = extract_answer(response, choices.keys())
 
