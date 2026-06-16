@@ -20,7 +20,6 @@ SYSTEM_PROMPT = """
 You are answering a multiple-choice question.
 
 Rules:
-1. You must select exactly one answer choice.
 2. The final line of your response must be:
 Final answer: X
 
